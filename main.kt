@@ -1,99 +1,133 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.Button
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import java.awt.MouseInfo
-import java.awt.Point
-import java.awt.event.MouseEvent
-import javax.xml.crypto.Data
-import kotlin.Exception
-import kotlin.math.abs
-import kotlin.math.pow
+import kotlin.math.sqrt
 
-fun mandelbrot(ScalePoint : Pair<Int,Int>) : Int {
-    var z1: Pair<Double, Double> = Pair(0.0, 0.0)
-    var c: Pair<Double, Double> = Pair(ScalePoint.first.toDouble(), ScalePoint.second.toDouble())
-    var iteration = 0
-    var max_iteration = 1000
+open class Scales(
+    var width: Int = 0,
+    var height: Int = 0,
+    var xMax: Double = 0.0,
+    var xMin: Double = 0.0,
+    var yMax: Double = 0.0,
+    var yMin: Double = 0.0)
+{
 
-    while (((z1.first.pow(2.0) + z1.second.pow(2.0)).pow(0.5)) < 2 && iteration < max_iteration) {
-        z1 = Pair(
-            (z1.first * z1.first - z1.second * z1.second) + c.first,
-            (z1.first * z1.second + z1.second * z1.first) + c.second
-        )
-        iteration++
-    }
-    return iteration
 }
 
+class Decart(var x: Float, var y: Float): Scales() {
 
-@OptIn(ExperimentalComposeUiApi::class)
+    // 1_D = W / (xMax - xMin)
+    fun ScreenToDec(s: Screen): Decart {
+        var x_ = s.x*(xMax-xMin) / width + xMin
+        var y_ = yMax - s.y*(yMax-yMin) / height
+        return Decart(x_.toFloat(), y_.toFloat())
+    }
+}
+
+class Screen(var x: Int, var y: Int):Scales() {
+
+    fun DecToScreen(d: Decart): Screen {
+        // (x_ - xMin) / (xMax - xMin) / = s.x
+        var x_ = (((d.x - xMin) * width) / (xMax - xMin))
+        var y_ = (((yMax - d.y) * width) / (xMax - xMin))
+        return Screen(x_.toInt(), y_.toInt())
+    }
+
+}
+
+class Complex(var x: Double, var y: Double) {
+
+    fun pow(k: Int): Complex {
+        var c: Complex = Complex(1.0,0.0)
+
+        for (i in 1..k) {
+            c *= Complex(this.x, this.y)
+        }
+        return c
+    }
+
+    operator fun times(c: Complex ) : Complex {
+        return Complex(this.x*c.x - this.y*c.y, this.x*c.y+this.y*c.x)
+    }
+    operator fun plus(c: Complex ) : Complex {
+        return Complex(this.x+c.x, this.y+c.y)
+    }
+
+    fun abs() : Double {
+        return sqrt(this.x*this.x + this.y*this.y)
+    }
+}
+
+fun mandelbrot(d: Decart) : Int {
+
+    var maxIter = 1000
+    var r = 4.0
+    var c: Complex = Complex(d.x.toDouble(), d.y.toDouble())
+    var z = Complex(0.0,0.0)
+
+    var iter = 0
+
+    while( z.abs() < r && iter < maxIter ) {
+        z = z.pow(2) + c
+        iter++
+
+    }
+
+    return iter
+
+}
+
 @Composable
 @Preview
 fun App() {
-    Canvas(modifier = Modifier.fillMaxSize().clickable{}. onPointerEvent(PointerEventType.Press){
+    var text by remember { mutableStateOf("Hello, World!") }
 
-    },
+    Canvas(modifier = Modifier.fillMaxSize(),
         onDraw = {
+            var scales = Scales(this.size.width.toInt(), this.size.height.toInt(),
+                10.0,-10.0,5.0,-5.0)
 
-            var matrix = Array(this.size.width.toInt()){IntArray(this.size.height.toInt())}
+            for (i in 0..scales.width) {
+                for (j in 0..scales.height) {
+                    var s = Screen(i,j)
+                    var d = Decart(0f, 0f)
+                    d = d.ScreenToDec(s)
+                    var clr = mandelbrot(d)
 
-            // Пробегаем по ширине
-            var number : MutableSet<Int> = mutableSetOf()
-            for (i in 0..this.size.width.toInt()-1) {
-                // Пробегаем по высоте
-                for (j in 0..this.size.height.toInt()-1)
-                {
-                    var chooseColor = mandelbrot(Pair(i,j))
-                    var colorr : Color = Color.Red
-                    if (chooseColor == 1000) {colorr = Color.White}
-                    else if (chooseColor == 1) {colorr = Color.Black}
-                    else if (chooseColor == 2) colorr = Color.Red
-
-                    drawCircle(
-                        color = colorr,
-                        radius = 1f,
-                        center = Offset(i.toFloat(),j.toFloat())
-                    )
-
-                    matrix[i][j] = chooseColor
-
+                    if (clr == 1000) {
+                        drawCircle(
+                            color = Color.Black,
+                            radius = 1f,
+                            center = Offset(i.toFloat(),j.toFloat())
+                        )
+                    }
+                    else {
+                        drawCircle(
+                            color = Color.White,
+                            radius = 1f,
+                            center = Offset(i.toFloat(),j.toFloat())
+                        )
+                    }
 
                 }
             }
 
-            for (line in 0..(this.size.width).toInt() - 2) {
-                for (column in 0..(this.size.height).toInt() - 2){
-                    if (matrix[line][column] > 1) print("${line} : ${column} ")
-                }
-            }
-        })
+        }
+    )
 }
-
-
 
 fun main() = application {
     Window(onCloseRequest = ::exitApplication) {
